@@ -1,8 +1,11 @@
 import re
 import openpyxl
 import pandas as pd
+import sys
+import pypyodbc as odbc
 
 filename = 'HOR_orders_may2022.xlsx' #output file name
+entry_date = '2022-05-01' #yyyy-mm-dd order dates from this point will be taken
 
 odate = list()
 price = list()
@@ -87,3 +90,74 @@ try:
     print(filename,'has been created')
 except:
     print('PROGRAM FAILED. ALL LISTS SHOULD HAVE SAME LENGTH.')
+    quit()
+
+#Setup connection to MS SQL
+DRIVER = 'SQL SERVER'
+SERVER_NAME = 'DESKTOP-7E5NKM2\LUI_SQL' #SELECT @@servername
+DATABASE_NAME = 'bootcamp'
+
+conn_string = f"""
+    Driver={{{DRIVER}}};
+    Server={SERVER_NAME};
+    Database={DATABASE_NAME};
+    Trust_Connection=yes;
+"""
+try:
+    conn = odbc.connect(conn_string)
+except Exception as e:
+    print(e)
+    print('task terminated')
+    sys.exit()
+else:
+    cursor = conn.cursor()
+
+drop_table = """
+    IF OBJECT_ID('sales_staging') IS NOT NULL
+	DROP TABLE sales_staging
+"""
+create_table = """
+    CREATE TABLE sales_staging (
+    sales_id INT IDENTITY(1,1) PRIMARY KEY,
+    contact_name VARCHAR(MAX),
+    recipient VARCHAR(MAX),
+    email VARCHAR(MAX),
+    phone VARCHAR(MAX),
+    delivery_address VARCHAR(MAX),
+    item VARCHAR(MAX),
+    price DECIMAL(8,2),
+    order_date DATE,
+    delivery_date DATE
+    )
+"""
+
+insert_statement = """
+    INSERT INTO sales_staging (
+    contact_name, recipient, email, phone, delivery_address, item, price, order_date, delivery_date)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+"""
+#hello
+try:
+    cursor.execute(drop_table)
+    print('Table sales_staging has been dropped')
+    cursor.execute(create_table)
+    print('Table sales_staging has been created')
+    for ind in data.index:
+        record = [data['contact_name'][ind],data['recipient'][ind],\
+        data['email'][ind],data['phone'][ind],\
+        data['delivery_address'][ind],data['item'][ind],\
+        data['price'][ind],data['order_date'][ind],\
+        data['delivery_date'][ind]]
+        cursor.execute(insert_statement, record)
+except Exception as e:
+    cursor.rollback()
+    print(e.value)
+    print('transaction rolled back')
+else:
+    print('records insterted successfully')
+    cursor.commit()
+    cursor.close() 
+finally:
+    if conn.connected == 1:
+        print('connection closed')
+        conn.close()
